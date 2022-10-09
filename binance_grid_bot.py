@@ -5,6 +5,7 @@
 # Author: Alessandro Lussana <alussana@ebi.ac.uk>
 
 import argparse as ap
+import datetime
 import json
 import requests
 from binance.client import Client
@@ -18,6 +19,8 @@ class GridBot:
         # define tradeable pair and symbol
         self.trade_pair = trade_pair
         self.trade_symbol = list(trade_pair.keys())[0]
+        self.trade_coin = self.trade_pair[self.trade_symbol][0]
+        self.stake_currency = self.trade_pair[self.trade_symbol][1]
         # initialize client and socket manager
         self.client = Client(key, secret)
         #self.client = Client(key, secret, testnet=True)
@@ -27,11 +30,11 @@ class GridBot:
         self.trade_socket = self.socket_manager.trade_socket(self.trade_symbol)
         # define price request url
         self.price_url = f'https://api.binance.com/api/v3/ticker/price?symbol={self.trade_symbol}'
-        self.stake_balance = self.getFreeAssetBalance(self.trade_pair[self.trade_symbol][1])
+        self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
         # exchange parameters
         self.min_trade_amount = 0 # TODO
         # grid parameters
-        self.grid_step = 0.007
+        self.grid_step = 0.001
         self.max_open_trades = 4
         self.sell_threshold = None
         self.buy_threshold = None
@@ -52,44 +55,59 @@ class GridBot:
         self.stake_balance = getFreeAssetBalance(self.trade_pair[self.trade_symbol][1])
         amount = self.stake_balance / self.max_open_trades * self.active_trades / self.buy_threshold 
         # TODO
-        self.trades_amount.append(amount)
-        print(f'\n{time}: buy order placed for {amount} {self.trade_pair[self.trade_symbol][0]} triggered by buy threshold {self.buy_threshold}')
-        self.active_trades += 1
-        print(f'current active trades: {self.active_trades}')
-    def placeSellOrder(self):
         # get time
         time = self.client.get_server_time()
-        amount = self.trades_amount.pop()
+        local_time = datetime.datetime.now()
+        self.trades_amount.append(amount)
+        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
+        self.active_trades += 1
+        print(f'[{local_time}]: current active trades: {self.active_trades}')
+    def placeSellOrder(self):
         # TODO
-        print(f'\n{time}: sell order placed for {amount} {self.trade_pair[self.trade_symbol][0]} triggered by sell threshold {self.sell_threshold}')
+        # get time
+        time = self.client.get_server_time()
+        local_time = datetime.datetime.now()
+        amount = self.trades_amount.pop()
+        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
         self.active_trades -= 1
-        print(f'current active trades: {self.active_trades}')
+        print(f'[{local_time}]: current active trades: {self.active_trades}')
     def getMeanPrice(self):
         price = 0
         for i in range(10):
             price = price + self.getPrice()
         mean_price = price / 10
-        print(f'\nmean price for {self.trade_symbol} initialized at {mean_price}.')
         return(mean_price)
     def start(self):
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: starting bot.')
         mean_price = self.getMeanPrice()
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: mean price for {self.trade_symbol} initialized at {mean_price}.')
         self.buy_threshold = mean_price * (1 - self.grid_step)
         self.sell_threshold = mean_price * (1 + self.grid_step)
-        print(f'\nbuy_threshold set at {self.buy_threshold}.')
-        print(f'\nsell_threshold set at {self.sell_threshold}.')
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
+        print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
         while True:
-            price = self.getPrice()
-            if self.active_trades > 0 and price > self.sell_threshold:
-                self.placeSellOrder()
-            elif self.active_trades < self.max_open_trades and price < self.buy_threshold:
-                self.placeBuyOrder()
+            try:
+                price = self.getPrice()
+                if self.active_trades > 0 and price > self.sell_threshold:
+                    self.placeSellOrder()
+                elif self.active_trades < self.max_open_trades and price < self.buy_threshold:
+                    self.placeBuyOrder()
+            except KeyboardInterrupt:
+                local_time = datetime.datetime.now()
+                print(f'[{local_time}]: bot terminated.')
+                exit()
+            except:
+                local_time = datetime.datetime.now()
+                print(f'[{local_time}]: cannot get current price; possible network issue.')
 
-    
 def parseArgs():
     parser = ap.ArgumentParser(description='Binance Grid Bot')
-    parser.add_argument(
+    requiredNamed = parser.add_argument_group('required named arguments')
+    requiredNamed.add_argument(
         '--api_key', metavar='KEY', type=str, help='API key file path')
-    parser.add_argument(
+    requiredNamed.add_argument(
         '--api_secret', metavar='SECRET', type=str, help='API secret key file path')
     args = parser.parse_args()
     api_key = args.api_key
