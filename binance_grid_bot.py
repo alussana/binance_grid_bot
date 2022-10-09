@@ -6,6 +6,7 @@
 
 import argparse as ap
 import datetime
+import time
 import json
 import requests
 from binance.client import Client
@@ -41,6 +42,7 @@ class GridBot:
         self.trades_amount = []
         self.active_trades = 0
         self.tradeable_stake = 0.8
+        self.price = None
     def getFreeAssetBalance(self, asset: str) -> float:
         # TODO
         #return(float(self.client.get_asset_balance(asset=asset)['free']))
@@ -48,34 +50,45 @@ class GridBot:
     def getPrice(self):
         response = requests.get(self.price_url).json()
         return(float(response['price']))
-    def placeBuyOrder(self, price: float):
+    def placeBuyOrder(self):
         # get time
         time = self.client.get_server_time()
         # get stake balance
-        self.stake_balance = getFreeAssetBalance(self.trade_pair[self.trade_symbol][1])
+        self.stake_balance = self.getFreeAssetBalance(self.trade_pair[self.trade_symbol][1])
         amount = self.stake_balance / self.max_open_trades * self.active_trades / self.buy_threshold 
         # TODO
         # get time
         time = self.client.get_server_time()
         local_time = datetime.datetime.now()
         self.trades_amount.append(amount)
+        # move grid
+        self.buy_threshold = self.price * (1 - self.grid_step)
+        self.sell_threshold = self.price * (1 + self.grid_step)
         print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
         self.active_trades += 1
         print(f'[{local_time}]: current active trades: {self.active_trades}')
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
+        print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
     def placeSellOrder(self):
         # TODO
         # get time
         time = self.client.get_server_time()
         local_time = datetime.datetime.now()
         amount = self.trades_amount.pop()
+        # move grid
+        self.buy_threshold = self.price * (1 - self.grid_step)
+        self.sell_threshold = self.price * (1 + self.grid_step)
         print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
         self.active_trades -= 1
         print(f'[{local_time}]: current active trades: {self.active_trades}')
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
+        print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
     def getMeanPrice(self):
         price = 0
         for i in range(10):
+            time.sleep(1)
             price = price + self.getPrice()
-        mean_price = price / 10
+        mean_price = round(price / 10, 5) 
         return(mean_price)
     def start(self):
         local_time = datetime.datetime.now()
@@ -89,18 +102,22 @@ class GridBot:
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
         while True:
             try:
-                price = self.getPrice()
-                if self.active_trades > 0 and price > self.sell_threshold:
+                time.sleep(2)
+                try:
+                    self.price = self.getPrice()
+                except:
+                    local_time = datetime.datetime.now()
+                    print(f'[{local_time}]: cannot get current price; possible network issue.')
+                if self.active_trades > 0 and self.price > self.sell_threshold:
                     self.placeSellOrder()
-                elif self.active_trades < self.max_open_trades and price < self.buy_threshold:
+                elif self.active_trades < self.max_open_trades and self.price < self.buy_threshold:
                     self.placeBuyOrder()
             except KeyboardInterrupt:
                 local_time = datetime.datetime.now()
                 print(f'[{local_time}]: bot terminated.')
                 exit()
-            except:
-                local_time = datetime.datetime.now()
-                print(f'[{local_time}]: cannot get current price; possible network issue.')
+            except Exception as e:
+                print(e)
 
 def parseArgs():
     parser = ap.ArgumentParser(description='Binance Grid Bot')
@@ -128,15 +145,12 @@ def readKeys(api_key, api_secret):
 def main():
     api_key, api_secret = parseArgs()
     key, secret = readKeys(api_key, api_secret)
-    bot = GridBot(key, secret)
+    #trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
+    #trade_pair = {'XMRBUSD': ['XMR', 'BUSD']}
+    trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
+    #trade_pair = {'BUSDUSDT': ['BUSD', 'USDT']}
+    bot = GridBot(key, secret, trade_pair)
     bot.start()
-
-def testBot():
-    api_key = 'api_key'
-    api_secret = 'api_secret_key'
-    trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
-    key, secret = readKeys(api_key, api_secret)
-    return(GridBot(key, secret))
 
 if __name__ == '__main__':
     main()
