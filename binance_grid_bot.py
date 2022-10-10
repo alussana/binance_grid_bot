@@ -13,7 +13,9 @@ from binance.client import Client
 from binance import BinanceSocketManager
 
 class GridBot:
-    def __init__(self, key, secret, trade_pair = {'BTCUSDT': ['BTC', 'USDT']}):
+    def __init__(self, key, secret, trade_pair = {'BTCUSDT': ['BTC', 'USDT']}, test=True):
+        # test mode
+        self.test_mode = test
         # user API authentication details
         self.key = key
         self.secret = secret
@@ -31,7 +33,10 @@ class GridBot:
         self.trade_socket = self.socket_manager.trade_socket(self.trade_symbol)
         # define price request url
         self.price_url = f'https://api.binance.com/api/v3/ticker/price?symbol={self.trade_symbol}'
-        self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
+        if self.test_mode:
+            self.stake_balance = 100
+        else:
+            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
         # exchange parameters
         self.min_trade_amount = 0 # TODO
         # grid parameters
@@ -44,43 +49,56 @@ class GridBot:
         self.tradeable_stake = 0.8
         self.price = None
     def getFreeAssetBalance(self, asset: str) -> float:
-        # TODO
-        #return(float(self.client.get_asset_balance(asset=asset)['free']))
-        return(100)
+        return(float(self.client.get_asset_balance(asset=asset)['free']))
     def getPrice(self):
         response = requests.get(self.price_url).json()
         return(float(response['price']))
+    def getServerTime(self):
+        time = self.client.get_server_time()
+        return(time['serverTime'])
     def placeBuyOrder(self):
         # get time
         time = self.client.get_server_time()
         # get stake balance
         self.stake_balance = self.getFreeAssetBalance(self.trade_pair[self.trade_symbol][1])
-        amount = self.stake_balance / self.max_open_trades * self.active_trades / self.buy_threshold 
-        # TODO
+        tradable_fraction = self.tradeable_stake / (self.max_open_trades - self.active_trades)
+        amount = round(self.stake_balance * tradable_fraction / self.buy_threshold, 5)
+        if self.test_mode:
+            self.stake_balance -= amount * buy_threshold
+        else:
+            # TODO
+            pass
         # get time
-        time = self.client.get_server_time()
+        time = self.getServerTime()
         local_time = datetime.datetime.now()
         self.trades_amount.append(amount)
         # move grid
-        self.buy_threshold = self.price * (1 - self.grid_step)
-        self.sell_threshold = self.price * (1 + self.grid_step)
+        self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
+        self.sell_threshold = round(self.price * (1 + self.grid_step), 5)
         print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
         self.active_trades += 1
-        print(f'[{local_time}]: current active trades: {self.active_trades}')
+        print(f'[{local_time}]: current stake balance: {self.stake_balance}')
+        print(f'[{local_time}]: current active trades: {self.trades_amount}')
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
     def placeSellOrder(self):
         # TODO
         # get time
-        time = self.client.get_server_time()
+        time = self.getServerTime()
         local_time = datetime.datetime.now()
         amount = self.trades_amount.pop()
+        if self.test_mode:
+            self.stake_balance += amount * buy_threshold
+        else:
+            # TODO
+            pass
         # move grid
-        self.buy_threshold = self.price * (1 - self.grid_step)
-        self.sell_threshold = self.price * (1 + self.grid_step)
+        self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
+        self.sell_threshold = round(self.price * (1 + self.grid_step), 5)
         print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
         self.active_trades -= 1
-        print(f'[{local_time}]: current active trades: {self.active_trades}')
+        print(f'[{local_time}]: current stake balance: {self.stake_balance}')
+        print(f'[{local_time}]: current active trades: {self.trades_amount}')
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
     def getMeanPrice(self):
@@ -96,8 +114,8 @@ class GridBot:
         mean_price = self.getMeanPrice()
         local_time = datetime.datetime.now()
         print(f'[{local_time}]: mean price for {self.trade_symbol} initialized at {mean_price}.')
-        self.buy_threshold = mean_price * (1 - self.grid_step)
-        self.sell_threshold = mean_price * (1 + self.grid_step)
+        self.buy_threshold = round(mean_price * (1 - self.grid_step), 5)
+        self.sell_threshold = round(mean_price * (1 + self.grid_step), 5)
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
         while True:
@@ -149,7 +167,7 @@ def main():
     #trade_pair = {'XMRBUSD': ['XMR', 'BUSD']}
     trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
     #trade_pair = {'BUSDUSDT': ['BUSD', 'USDT']}
-    bot = GridBot(key, secret, trade_pair)
+    bot = GridBot(key, secret, trade_pair, test=True)
     bot.start()
 
 if __name__ == '__main__':
