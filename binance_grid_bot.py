@@ -9,8 +9,11 @@ import datetime
 import time
 import json
 import requests
+import sqlalchemy
+import pandas as pd
 from binance.client import Client
 from binance import BinanceSocketManager
+
 
 class GridBot:
 
@@ -49,14 +52,16 @@ class GridBot:
         self.min_trade_amount = 0 # TODO
         
         # grid parameters
-        self.grid_step = 0.001
-        self.max_open_trades = 4
+        self.grid_step = 0.01
+        self.max_open_trades = 3
         self.sell_threshold = None
         self.buy_threshold = None
         self.trades_amount = []
         self.active_trades = 0
-        self.tradeable_stake = 0.8
+        self.tradeable_stake = 0.9
         self.price = None
+
+        self.timestep_count = -1
     
     def getFreeAssetBalance(self, asset: str) -> float:
 
@@ -146,6 +151,8 @@ class GridBot:
         print(f'[{local_time}]: starting bot.')
         print()
         print(f'[{local_time}]: stake balance is {self.stake_balance}.')
+        # SQL engine
+        self.sql_engine = sqlalchemy.create_engine(f'sqlite:///{self.trade_symbol}.db')
         mean_price = self.getMeanPrice()
         local_time = datetime.datetime.now()
         print()
@@ -157,11 +164,18 @@ class GridBot:
         while True:
             try:
                 time.sleep(2)
+                local_time = datetime.datetime.now()
+                self.timestep_count += 1
+
                 try:
                     self.price = self.getPrice()
+                    df = pd.DataFrame({'local_time': local_time, 'price': self.price}, index=[self.timestep_count])
                 except:
-                    local_time = datetime.datetime.now()
+                    df = pd.DataFrame({'local_time': local_time, 'price': 'NA'}, index=[self.timestep_count])
                     print(f'[{local_time}]: cannot get current price; possible network issue.')
+
+                df.to_sql(self.trade_symbol, self.sql_engine, if_exists='append', index=True)
+                
                 if self.active_trades > 0 and self.price > self.sell_threshold:
                     self.placeSellOrder()
                 elif self.active_trades < self.max_open_trades and self.price < self.buy_threshold:
