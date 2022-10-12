@@ -93,11 +93,24 @@ class GridBot:
 
         # perform buy order
         if self.test_mode:
-            self.stake_balance -= amount * self.buy_threshold
+            #self.stake_balance -= amount * self.buy_threshold
+            order = self.client.create_test_order(
+                symbol=self.trade_symbol,
+                side='BUY',
+                type='MARKET',
+                quantity=amount
+            )
         else:
-            # TODO place order
-            pass
-
+            order = self.client.create_order(
+                symbol=self.trade_symbol,
+                side='BUY',
+                type='MARKET',
+                quantity=amount
+            )
+            
+        # TODO print order details
+        print(order)
+        
         # get time
         time = self.getServerTime()
         local_time = datetime.datetime.now()
@@ -131,10 +144,23 @@ class GridBot:
 
         # perform the sell order
         if self.test_mode:
-            self.stake_balance += amount * self.sell_threshold
+            #self.stake_balance += amount * self.sell_threshold
+            order = self.client.create_test_order(
+                symbol=self.trade_symbol,
+                side='SELL',
+                type='MARKET',
+                quantity=amount
+            )
         else:
-            # TODO
-            pass
+            order = self.client.create_order(
+                symbol=self.trade_symbol,
+                side='SELL',
+                type='MARKET',
+                quantity=amount
+            )
+            
+        # TODO print order details
+        print(order)
             
         # move grid
         self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
