@@ -36,9 +36,11 @@ class GridBot:
         self.stake_currency = self.trade_pair[self.trade_symbol][1]
 
         # initialize client and socket manager
-        self.client = Client(key, secret)
-        #self.client = Client(key, secret, testnet=True)
-        #client = await AsyncClient.create(api_key, api_secret)
+        if self.test_mode:
+            self.client = Client(key, secret, testnet=True)
+        else:
+            self.client = Client(key, secret)
+            #client = await AsyncClient.create(api_key, api_secret)
         self.socket_manager = BinanceSocketManager(self.client)
         
         # initialize trade socket
@@ -47,7 +49,8 @@ class GridBot:
         # define price request url
         self.price_url = f'https://api.binance.com/api/v3/ticker/price?symbol={self.trade_symbol}'
         if self.test_mode:
-            self.stake_balance = 100
+            #self.stake_balance = 100
+            self.stake_balance = None
         else:
             self.stake_balance = None
         
@@ -62,7 +65,7 @@ class GridBot:
         self.trades_amount = [] # LIFO queue of active trades amounts
         self.trades_price = [] # prices corresponding to the the positions in self.trades_amount
         self.active_trades = 0  # number of active trades
-        self.tradeable_stake = 0.9
+        self.tradeable_stake = 0.05
         self.stoploss = self.grid_step * (self.max_open_trades + 1) # loss tolerance for a position before triggering sell order
         self.stoploss_price = -np.inf # price that will trigger the stoploss for the oldest position
 
@@ -73,7 +76,7 @@ class GridBot:
 
         return(float(self.client.get_asset_balance(asset=asset)['free']))
     
-    def getPrice(self):
+    def getPrice(self) -> float:
 
         response = requests.get(self.price_url).json()
         return(float(response['price']))
@@ -83,31 +86,46 @@ class GridBot:
         time = self.client.get_server_time()
         return(time['serverTime'])
     
+    def getTradingFees(self) -> float:
+        if self.test_mode:
+            # the testnet key seems to be invalid when calling client.get_trade_fee()
+            return(0)
+        else:
+            fees = self.client.get_trade_fee(symbol=self.trade_symbol)
+            fee = fees # TODO get taker or maker commissions
+            return(fee)
+
     def placeBuyOrder(self):
 
         # get stake balance
         if self.test_mode:
-            pass
+            #pass
+            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
         else:
             self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
 
         # determine the amount to buy
         total_stake = self.stake_balance
         for i in range(len(self.trades_amount)):
-            total_stake = total_stake + self.active_trades[i] * self.trades_price[i]
+            total_stake = total_stake + self.trades_amount[i] * self.trades_price[i]
         stake_amount = total_stake * self.tradeable_stake / self.max_open_trades
         amount = round(stake_amount / self.buy_threshold, 5)
 
         # perform buy order
         if self.test_mode:
-            self.stake_balance -= amount * self.price
-            # TODO
+            #self.stake_balance -= amount * self.price
             #order = self.client.create_test_order(
             #    symbol=self.trade_symbol,
             #    side='BUY',
             #    type='MARKET',
             #    quantity=amount
             #)
+            order = self.client.create_order(
+                symbol=self.trade_symbol,
+                side='BUY',
+                type='MARKET',
+                quantity=amount
+            )
         else:
             order = self.client.create_order(
                 symbol=self.trade_symbol,
@@ -117,7 +135,9 @@ class GridBot:
             )
             
         # TODO print order details
-        #print(order)
+        print()
+        print(order)
+        print()
         
         # get time
         time = self.getServerTime()
@@ -161,14 +181,19 @@ class GridBot:
 
         # perform the sell order
         if self.test_mode:
-            self.stake_balance += amount * self.price
-            # TODO
+            #self.stake_balance += amount * self.price
             #order = self.client.create_test_order(
             #    symbol=self.trade_symbol,
             #    side='SELL',
             #    type='MARKET',
             #    quantity=amount
             #)
+            order = self.client.create_order(
+                symbol=self.trade_symbol,
+                side='SELL',
+                type='MARKET',
+                quantity=amount
+            )
         else:
             order = self.client.create_order(
                 symbol=self.trade_symbol,
@@ -177,8 +202,10 @@ class GridBot:
                 quantity=amount
             )
             
-        # TODO print order details 
-        #print(order)
+        # TODO print order details
+        print()
+        print(order)
+        print()
             
         # move grid
         self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
@@ -206,14 +233,19 @@ class GridBot:
 
         # perform the sell order
         if self.test_mode:
-            self.stake_balance += amount * self.price
-            # TODO
+            #self.stake_balance += amount * self.price
             #order = self.client.create_test_order(
             #    symbol=self.trade_symbol,
             #    side='SELL',
             #    type='MARKET',
             #    quantity=amount
             #)
+            order = self.client.create_order(
+                symbol=self.trade_symbol,
+                side='SELL',
+                type='MARKET',
+                quantity=amount
+            )
         else:
             order = self.client.create_order(
                 symbol=self.trade_symbol,
@@ -223,7 +255,9 @@ class GridBot:
             )
    
         # TODO print order details
-        #print(order)
+        print()
+        print(order)
+        print()
 
         # update the amount of active trades
         self.active_trades -= 1
@@ -260,7 +294,8 @@ class GridBot:
         
         # get starting stake balance
         if self.test_mode:
-            pass
+            #
+            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
         else:
             self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
 
@@ -331,13 +366,16 @@ class GridBot:
                 exit()
 
 def parseArgs():
-    # ./binance_grid_bot.py --api_key api_key --api_secret api_secret_key
+    # ./binance_grid_bot.py --api_key api_key_testnet --api_secret api_secret_testnet
     parser = ap.ArgumentParser(description='Binance Grid Bot')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument(
-        '--api_key', metavar='KEY', type=str, help='API key file path')
+        '-k', '--api_key', metavar='KEY', type=str, help='API key file path',
+        required=True)
     requiredNamed.add_argument(
-        '--api_secret', metavar='SECRET', type=str, help='API secret key file path')
+        '-s', '--api_secret', metavar='SECRET', type=str,
+        help='API secret key file path', required=True)
+    optional = parser.add_argument_group('optional arguments')
     args = parser.parse_args()
     api_key = args.api_key
     api_secret = args.api_secret
