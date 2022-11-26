@@ -7,14 +7,12 @@
 import argparse as ap
 import datetime
 import time
-import json
 import requests
 import sqlalchemy
 import pandas as pd
 import numpy as np
 from binance.client import Client
 from binance import BinanceSocketManager
-
 
 class GridBot:
 
@@ -57,7 +55,7 @@ class GridBot:
         self.min_trade_amount = 0 # TODO
         
         # grid parameters
-        self.grid_step = 0.01
+        self.grid_step = 0.005
         self.max_open_trades = 3
         self.sell_threshold = None
         self.buy_threshold = None
@@ -91,11 +89,14 @@ class GridBot:
         if self.test_mode:
             pass
         else:
-            self.stake_balance = self.getFreeAssetBalance(self.trade_pair[self.trade_symbol][1])
+            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
 
         # determine the amount to buy
-        tradable_fraction = self.tradeable_stake / (self.max_open_trades - self.active_trades)
-        amount = round(self.stake_balance * tradable_fraction / self.buy_threshold, 5)
+        total_stake = self.stake_balance
+        for i in range(len(self.trades_amount)):
+            total_stake = total_stake + self.active_trades[i] * self.trades_price[i]
+        stake_amount = total_stake * self.tradeable_stake / self.max_open_trades
+        amount = round(stake_amount / self.buy_threshold, 5)
 
         # perform buy order
         if self.test_mode:
@@ -137,15 +138,14 @@ class GridBot:
         
         # set stoploss price if no older positions exist
         if self.active_trades == 1:
-            self.stoploss_price = self.trades_price(0) * (1 - self.stoploss)
+            self.stoploss_price = self.trades_price[0] * (1 - self.stoploss)
 
         # log
         print('---')
         print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
-        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
-        print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}. | sell_threshold set at {self.sell_threshold}.')
     
     def placeSellOrder(self):
 
@@ -193,8 +193,7 @@ class GridBot:
         print(f'[{local_time}]: buy price was {buy_price}; sell price is {self.price}')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
-        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
-        print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}. | sell_threshold set at {self.sell_threshold}.')
     
     def executeStoploss(self):
         
@@ -237,8 +236,7 @@ class GridBot:
 
         # log
         print('---')
-        print(f'[{local_time}]: !!! StopLoss triggered !!!')
-        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
+        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by stoploss ({self.stoploss_price}) at Binance server time {time}.')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
 
@@ -322,7 +320,7 @@ class GridBot:
                 # decide whether to trigger a stoploss, place a sell/buy order, or do nothing
                 if self.active_trades > 0 and self.price > self.sell_threshold:
                     self.placeSellOrder()
-                elif self.price < self.stoploss_price:
+                elif self.active_trades > 0 and self.price < self.stoploss_price:
                     self.executeStoploss()
                 elif self.active_trades < self.max_open_trades and self.price < self.buy_threshold:
                     self.placeBuyOrder()
@@ -331,9 +329,6 @@ class GridBot:
                 local_time = datetime.datetime.now()
                 print(f'[{local_time}]: bot terminated.')
                 exit()
-
-            except Exception as e:
-                print(e)
 
 def parseArgs():
     # ./binance_grid_bot.py --api_key api_key --api_secret api_secret_key
