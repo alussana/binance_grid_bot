@@ -140,12 +140,10 @@ class GridBot:
             self.stoploss_price = self.trades_price(0) * (1 - self.stoploss)
 
         # log
-        print()
-        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
         print('---')
+        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
-        print('---')
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
     
@@ -193,10 +191,8 @@ class GridBot:
         print('---')
         print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
         print(f'[{local_time}]: buy price was {buy_price}; sell price is {self.price}')
-        print('---')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
-        print('---')
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
     
@@ -243,7 +239,6 @@ class GridBot:
         print('---')
         print(f'[{local_time}]: !!! StopLoss triggered !!!')
         print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
-        print('---')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
 
@@ -257,8 +252,14 @@ class GridBot:
     
     def start(self):
         
+        # log
         local_time = datetime.datetime.now()
-
+        print('---')
+        if self.test_mode:
+            print(f'[{local_time}]: starting bot in test mode.')
+        else:
+            print(f'[{local_time}]: starting bot.')
+        
         # get starting stake balance
         if self.test_mode:
             pass
@@ -266,13 +267,19 @@ class GridBot:
             self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
 
         # log
-        print(f'[{local_time}]: starting bot.')
-        print()
-        print(f'[{local_time}]: stake balance is {self.stake_balance}.')
+        local_time = datetime.datetime.now()
+        print('---')
+        print(f'[{local_time}]: starting stake balance is {self.stake_balance} {self.stake_currency}.')
         
         # SQL engine
         if self.enable_sql:
             self.sql_engine = sqlalchemy.create_engine(f'sqlite:///{self.trade_symbol}.db')
+            local_time = datetime.datetime.now()
+            print('---')
+            print(f'[{local_time}]: SQL engine is enabled; database created in {self.trade_symbol}.db.')
+        else:
+            local_time = datetime.datetime.now()
+            print(f'[{local_time}]: SQL engine not enabled.')
         
         # set the starting price
         mean_price = self.getMeanPrice()
@@ -280,14 +287,14 @@ class GridBot:
         # set the starting grid thresholds
         self.buy_threshold = round(mean_price * (1 - self.grid_step), 5)
         self.sell_threshold = round(mean_price * (1 + self.grid_step), 5)
-        
-        local_time = datetime.datetime.now()
 
         # log
-        print()
+        local_time = datetime.datetime.now()
+        print('---')
         print(f'[{local_time}]: mean price for {self.trade_symbol} initialized at {mean_price}.')
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}.')
         print(f'[{local_time}]: sell_threshold set at {self.sell_threshold}.')
+        print(f'[{local_time}]: trade starts.')
 
         # grid strategy loop
         while True:
@@ -329,6 +336,7 @@ class GridBot:
                 print(e)
 
 def parseArgs():
+    # ./binance_grid_bot.py --api_key api_key --api_secret api_secret_key
     parser = ap.ArgumentParser(description='Binance Grid Bot')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument(
@@ -358,7 +366,7 @@ def main():
     #trade_pair = {'XMRBUSD': ['XMR', 'BUSD']}
     trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
     #trade_pair = {'BUSDUSDT': ['BUSD', 'USDT']}
-    bot = GridBot(key, secret, trade_pair, test=True, enable_sql=False)
+    bot = GridBot(key, secret, trade_pair, test=True, enable_sql=True)
     bot.start()
 
 if __name__ == '__main__':
