@@ -56,6 +56,10 @@ class GridBot:
         
         # exchange parameters
         self.min_trade_amount = 0 # TODO
+        self.min_quantity = self.getMinQty()
+        self.step_size = self.getStepSize()
+        self.ndecimal_precision = int(-np.log10(self.step_size))
+        # TODO get trading fees
         
         # grid parameters
         self.grid_step = 0.005
@@ -65,12 +69,17 @@ class GridBot:
         self.trades_amount = [] # LIFO queue of active trades amounts
         self.trades_price = [] # prices corresponding to the the positions in self.trades_amount
         self.active_trades = 0  # number of active trades
-        self.tradeable_stake = 0.05
+        self.tradeable_stake = 0.2
         self.stoploss = self.grid_step * (self.max_open_trades + 1) # loss tolerance for a position before triggering sell order
         self.stoploss_price = -np.inf # price that will trigger the stoploss for the oldest position
 
         # current price        
         self.price = None
+
+    def getStepSize(self):
+        filters = self.client.get_symbol_info(self.trade_symbol)['filters']
+        stepSize = float(filters[2]['stepSize'])
+        return(stepSize)
     
     def getFreeAssetBalance(self, asset: str) -> float:
 
@@ -80,7 +89,12 @@ class GridBot:
 
         response = requests.get(self.price_url).json()
         return(float(response['price']))
-    
+
+    def getMinQty(self) -> float:
+        info = self.client.get_symbol_info(self.trade_symbol)
+        minQty = float(info['filters'][2]['minQty'])
+        return(minQty)
+
     def getServerTime(self):
 
         time = self.client.get_server_time()
@@ -98,50 +112,36 @@ class GridBot:
     def placeBuyOrder(self):
 
         # get stake balance
-        if self.test_mode:
-            #pass
-            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
-        else:
-            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
+        self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
 
         # determine the amount to buy
         total_stake = self.stake_balance
         for i in range(len(self.trades_amount)):
             total_stake = total_stake + self.trades_amount[i] * self.trades_price[i]
         stake_amount = total_stake * self.tradeable_stake / self.max_open_trades
-        amount = round(stake_amount / self.buy_threshold, 5)
+        amount = round(stake_amount / self.buy_threshold, self.ndecimal_precision)
+
+        # log
+        print('---')
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: placing buy order for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}).')
 
         # perform buy order
-        if self.test_mode:
-            #self.stake_balance -= amount * self.price
-            #order = self.client.create_test_order(
-            #    symbol=self.trade_symbol,
-            #    side='BUY',
-            #    type='MARKET',
-            #    quantity=amount
-            #)
-            order = self.client.create_order(
-                symbol=self.trade_symbol,
-                side='BUY',
-                type='MARKET',
-                quantity=amount
-            )
-        else:
-            order = self.client.create_order(
-                symbol=self.trade_symbol,
-                side='BUY',
-                type='MARKET',
-                quantity=amount
-            )
-            
-        # TODO print order details
-        print()
-        print(order)
-        print()
-        
+        order = self.client.create_order(
+            symbol=self.trade_symbol,
+            side='BUY',
+            type='MARKET',
+            quantity=amount
+        )
+
         # get time
         time = self.getServerTime()
         local_time = datetime.datetime.now()
+            
+        # TODO print order details
+        #print()
+        #print(order)
+        #print()
 
         # add the amount to the LIFO queue of active trades amounts
         self.trades_amount.append(amount)
@@ -161,7 +161,6 @@ class GridBot:
             self.stoploss_price = self.trades_price[0] * (1 - self.stoploss)
 
         # log
-        print('---')
         print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
@@ -169,43 +168,33 @@ class GridBot:
     
     def placeSellOrder(self):
 
-        # get time
-        time = self.getServerTime()
-        local_time = datetime.datetime.now()
-
         # determine the amount to sell from the LIFO queue of active trades
         amount = self.trades_amount.pop()
 
         # remove the position from the list of active trades prices
         buy_price = self.trades_price.pop()
 
+        # log
+        print('---')
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: placing sell order for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}).')
+
         # perform the sell order
-        if self.test_mode:
-            #self.stake_balance += amount * self.price
-            #order = self.client.create_test_order(
-            #    symbol=self.trade_symbol,
-            #    side='SELL',
-            #    type='MARKET',
-            #    quantity=amount
-            #)
-            order = self.client.create_order(
-                symbol=self.trade_symbol,
-                side='SELL',
-                type='MARKET',
-                quantity=amount
-            )
-        else:
-            order = self.client.create_order(
-                symbol=self.trade_symbol,
-                side='SELL',
-                type='MARKET',
-                quantity=amount
-            )
+        order = self.client.create_order(
+            symbol=self.trade_symbol,
+            side='SELL',
+            type='MARKET',
+            quantity=amount
+        )
+
+        # get time
+        time = self.getServerTime()
+        local_time = datetime.datetime.now()
             
         # TODO print order details
-        print()
-        print(order)
-        print()
+        #print()
+        #print(order)
+        #print()
             
         # move grid
         self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
@@ -215,7 +204,6 @@ class GridBot:
         self.active_trades -= 1
         
         # log
-        print('---')
         print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
         print(f'[{local_time}]: buy price was {buy_price}; sell price is {self.price}')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
@@ -223,41 +211,31 @@ class GridBot:
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}. | sell_threshold set at {self.sell_threshold}.')
     
     def executeStoploss(self):
-        
-        # get time
-        time = self.getServerTime()
-        local_time = datetime.datetime.now()
 
         # determine the amount to sell from the oldest active trade
         amount = self.trades_amount.pop(0)
 
+        # log
+        print('---')
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: placing sell order for {amount} {self.trade_coin} triggered by stoploss threshold ({self.stoploss_price}).')
+
         # perform the sell order
-        if self.test_mode:
-            #self.stake_balance += amount * self.price
-            #order = self.client.create_test_order(
-            #    symbol=self.trade_symbol,
-            #    side='SELL',
-            #    type='MARKET',
-            #    quantity=amount
-            #)
-            order = self.client.create_order(
-                symbol=self.trade_symbol,
-                side='SELL',
-                type='MARKET',
-                quantity=amount
-            )
-        else:
-            order = self.client.create_order(
-                symbol=self.trade_symbol,
-                side='SELL',
-                type='MARKET',
-                quantity=amount
-            )
+        order = self.client.create_order(
+            symbol=self.trade_symbol,
+            side='SELL',
+            type='MARKET',
+            quantity=amount
+        )
+
+        # get time
+        time = self.getServerTime()
+        local_time = datetime.datetime.now()
    
         # TODO print order details
-        print()
-        print(order)
-        print()
+        #print()
+        #print(order)
+        #print()
 
         # update the amount of active trades
         self.active_trades -= 1
@@ -269,7 +247,6 @@ class GridBot:
             self.stoploss_price = -np.inf
 
         # log
-        print('---')
         print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by stoploss ({self.stoploss_price}) at Binance server time {time}.')
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
