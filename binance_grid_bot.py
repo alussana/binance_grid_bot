@@ -8,7 +8,8 @@ import argparse as ap
 import datetime
 import time
 import requests
-import sqlalchemy
+#import sqlalchemy
+import sqlite3
 import pandas as pd
 import numpy as np
 from binance.client import Client
@@ -62,7 +63,7 @@ class GridBot:
         # TODO get trading fees
         
         # grid parameters
-        self.grid_step = 0.005
+        self.grid_step = 0.007
         self.max_open_trades = 3
         self.sell_threshold = None
         self.buy_threshold = None
@@ -133,15 +134,14 @@ class GridBot:
             type='MARKET',
             quantity=amount
         )
-
-        # get time
-        time = self.getServerTime()
-        local_time = datetime.datetime.now()
             
         # TODO print order details
         #print()
         #print(order)
         #print()
+
+        # update the amount of active trades
+        self.active_trades += 1
 
         # add the amount to the LIFO queue of active trades amounts
         self.trades_amount.append(amount)
@@ -149,21 +149,29 @@ class GridBot:
         # add the price to the LIFO queue of active trades prices
         self.trades_price.append(self.price)
 
+        # get Binance server time
+        time = self.getServerTime()
+
+        # log
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} at Binance server time {time}.')
+        print(f'[{local_time}]: current active trades: {self.trades_amount}')
+
         # move grid
         self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
         self.sell_threshold = round(self.price * (1 + self.grid_step), 5)
 
-        # update the amount of active trades
-        self.active_trades += 1
-        
         # set stoploss price if no older positions exist
         if self.active_trades == 1:
             self.stoploss_price = self.trades_price[0] * (1 - self.stoploss)
 
+        # get stake balance
+        self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
+
         # log
-        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
+        time = self.getServerTime()
+        local_time = datetime.datetime.now()
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
-        print(f'[{local_time}]: current active trades: {self.trades_amount}')
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}. | sell_threshold set at {self.sell_threshold}.')
     
     def placeSellOrder(self):
@@ -179,6 +187,9 @@ class GridBot:
         local_time = datetime.datetime.now()
         print(f'[{local_time}]: placing sell order for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}).')
 
+        # get Binance server time
+        time = self.getServerTime()
+
         # perform the sell order
         order = self.client.create_order(
             symbol=self.trade_symbol,
@@ -186,29 +197,31 @@ class GridBot:
             type='MARKET',
             quantity=amount
         )
-
-        # get time
-        time = self.getServerTime()
-        local_time = datetime.datetime.now()
             
         # TODO print order details
         #print()
         #print(order)
         #print()
-            
+        
+        # log
+        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} at Binance server time {time}.')
+        print(f'[{local_time}]: buy price was {buy_price}; sell price is {self.price}')
+        print(f'[{local_time}]: current active trades: {self.trades_amount}')
+
         # move grid
         self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
         self.sell_threshold = round(self.price * (1 + self.grid_step), 5)
 
         # update the number of active trades
         self.active_trades -= 1
-        
+
+        # get stake balance
+        self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
+
         # log
-        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by sell threshold ({self.sell_threshold}) at Binance server time {time}.')
-        print(f'[{local_time}]: buy price was {buy_price}; sell price is {self.price}')
-        print(f'[{local_time}]: current stake balance: {self.stake_balance}')
-        print(f'[{local_time}]: current active trades: {self.trades_amount}')
+        local_time = datetime.datetime.now()
         print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}. | sell_threshold set at {self.sell_threshold}.')
+        print(f'[{local_time}]: current stake balance: {self.stake_balance}')
     
     def executeStoploss(self):
 
@@ -220,6 +233,9 @@ class GridBot:
         local_time = datetime.datetime.now()
         print(f'[{local_time}]: placing sell order for {amount} {self.trade_coin} triggered by stoploss threshold ({self.stoploss_price}).')
 
+        # get Binance server time
+        time = self.getServerTime()
+
         # perform the sell order
         order = self.client.create_order(
             symbol=self.trade_symbol,
@@ -227,10 +243,6 @@ class GridBot:
             type='MARKET',
             quantity=amount
         )
-
-        # get time
-        time = self.getServerTime()
-        local_time = datetime.datetime.now()
    
         # TODO print order details
         #print()
@@ -240,16 +252,23 @@ class GridBot:
         # update the amount of active trades
         self.active_trades -= 1
 
+        # log
+        local_time = datetime.datetime.now()
+        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} at Binance server time {time}.')
+        print(f'[{local_time}]: current active trades: {self.trades_amount}')
+
         # update stoploss trigger price
         if self.active_trades > 0:
             self.stoploss_price = self.trades_price[0] * (1 - self.stoploss)
         else:
             self.stoploss_price = -np.inf
 
-        # log
-        print(f'[{local_time}]: sell order placed for {amount} {self.trade_coin} triggered by stoploss ({self.stoploss_price}) at Binance server time {time}.')
+        # get stake balance
+        self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
+
+        #log
+        local_time = datetime.datetime.now()
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
-        print(f'[{local_time}]: current active trades: {self.trades_amount}')
 
     def getMeanPrice(self):
         price = 0
@@ -283,13 +302,14 @@ class GridBot:
         
         # SQL engine
         if self.enable_sql:
-            self.sql_engine = sqlalchemy.create_engine(f'sqlite:///{self.trade_symbol}.db')
+            #self.sql_engine = sqlalchemy.create_engine(f'sqlite:///{self.trade_symbol}.db')
+            self.sql_cnx = sqlite3.connect(f'{self.trade_symbol}.db')
             local_time = datetime.datetime.now()
             print('---')
-            print(f'[{local_time}]: SQL engine is enabled; database created in {self.trade_symbol}.db.')
+            print(f'[{local_time}]: SQL database created in {self.trade_symbol}.db.')
         else:
             local_time = datetime.datetime.now()
-            print(f'[{local_time}]: SQL engine not enabled.')
+            print(f'[{local_time}]: SQL not enabled.')
         
         # set the starting price
         mean_price = self.getMeanPrice()
@@ -327,7 +347,9 @@ class GridBot:
                     print(f'[{local_time}]: cannot get current price; possible network issue.')
 
                 if self.enable_sql:
-                    df.to_sql(self.trade_symbol, self.sql_engine, if_exists='append', index=True)
+                    #df.to_sql(self.trade_symbol, self.sql_engine, if_exists='append', index=True)
+                    df.to_sql(self.trade_symbol, self.sql_cnx, if_exists='append', index=True)
+                    self.sql_cnx.execute(f'DELETE FROM {self.trade_symbol} WHERE "index" = {self.timestep_count - 10800};')
                 
                 # decide whether to trigger a stoploss, place a sell/buy order, or do nothing
                 if self.active_trades > 0 and self.price > self.sell_threshold:
