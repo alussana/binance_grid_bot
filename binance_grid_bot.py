@@ -76,7 +76,10 @@ class GridBot:
 
     def getStepSize(self) -> float:
         filters = self.client.get_symbol_info(self.trade_symbol)['filters']
-        stepSize = float(filters[2]['stepSize'])
+        filters_dict = {}
+        for filter in filters:
+            filters_dict[filter['filterType']] = filter
+        stepSize = float(filters_dict['LOT_SIZE']['stepSize'])
         return(stepSize)
     
     def getFreeAssetBalance(self, asset: str) -> float:
@@ -89,10 +92,13 @@ class GridBot:
         return(float(response['price']))
 
     def getMinQty(self) -> float:
-        info = self.client.get_symbol_info(self.trade_symbol)
-        minQty = float(info['filters'][2]['minQty'])
+        filters = self.client.get_symbol_info(self.trade_symbol)['filters']
+        filters_dict = {}
+        for filter in filters:
+            filters_dict[filter['filterType']] = filter
+        minQty = float(filters_dict['LOT_SIZE']['minQty'])
         return(minQty)
-
+        
     def getServerTime(self):
 
         time = self.client.get_server_time()
@@ -184,7 +190,7 @@ class GridBot:
 
         # log
         local_time = datetime.datetime.now()       
-        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold}. | sell_threshold set at {self.sell_threshold}.')
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold} | sell_threshold set at {self.sell_threshold}')
 
         # check wallet, if changes are detected, write on database
         self.checkAndTrackWallet()
@@ -305,7 +311,7 @@ class GridBot:
         # log
         local_time = datetime.datetime.now()
         print('---')
-        print(f'[{local_time}]: starting stake balance is {self.stake_balance} {self.stake_currency}.')
+        print(f'[{local_time}]: starting stake balance is {self.stake_balance} {self.stake_currency}')
         
         # SQL engine for price
         self.sql_price_cnx = sqlite3.connect(f'{self.trade_symbol}_price.db')
