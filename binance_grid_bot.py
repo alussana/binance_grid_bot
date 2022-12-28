@@ -51,9 +51,9 @@ class GridBot:
         # wallet parameters
         self.stake_balance = None
         self.trade_balance = None
+        self.tradeable_stake = 0.8 # proportion of tradeable stake currency
         
         # exchange parameters
-        self.min_trade_amount = 0 # TODO
         self.min_quantity = self.getMinQty()
         self.step_size = self.getStepSize()
         self.ndecimal_precision = int(-np.log10(self.step_size))
@@ -61,20 +61,18 @@ class GridBot:
         
         # grid parameters
         self.grid_step = 0.007
-        self.max_open_trades = 3
+        self.max_open_trades = 4
         self.sell_threshold = None
         self.buy_threshold = None
         self.trades_amount = [] # LIFO queue of active trades amounts
         self.trades_price = [] # prices corresponding to the the positions in self.trades_amount
         self.active_trades = 0  # number of active trades
-        self.tradeable_stake = 0.2
         self.stoploss = self.grid_step * (self.max_open_trades + 1) # loss tolerance for a position before triggering sell order
         self.stoploss_price = -np.inf # price that will trigger the stoploss for the oldest position
-
-        # current price        
-        self.price = None
+        self.price = None # current price
 
     def getStepSize(self) -> float:
+
         filters = self.client.get_symbol_info(self.trade_symbol)['filters']
         filters_dict = {}
         for filter in filters:
@@ -92,6 +90,7 @@ class GridBot:
         return(float(response['price']))
 
     def getMinQty(self) -> float:
+
         filters = self.client.get_symbol_info(self.trade_symbol)['filters']
         filters_dict = {}
         for filter in filters:
@@ -105,6 +104,7 @@ class GridBot:
         return(time['serverTime'])
     
     def getTradingFees(self) -> float:
+
         if self.test_mode:
             # the testnet key seems to be invalid when calling client.get_trade_fee()
             return(0)
@@ -139,7 +139,6 @@ class GridBot:
                 },
                 index=[self.timestep_count])
             df.to_sql(self.trade_symbol, self.sql_wallet_cnx, if_exists='append', index=True)
-
 
     def placeBuyOrder(self):
 
@@ -177,7 +176,7 @@ class GridBot:
         # log
         local_time = datetime.datetime.now()
         print('---')
-        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}.')
+        print(f'[{local_time}]: buy order placed for {amount} {self.trade_coin} triggered by buy threshold ({self.buy_threshold}) at Binance server time {time}')
         print(f'[{local_time}]: current active trades: {self.trades_amount}')
 
         # move grid
@@ -283,6 +282,21 @@ class GridBot:
         local_time = datetime.datetime.now()
         print(f'[{local_time}]: current stake balance: {self.stake_balance}')
 
+    def reset_grid(self):
+
+        # log
+        local_time = datetime.datetime.now()
+        print('---')
+        print(f'[{local_time}]: sell threshold crossed but no active trades - resetting grid')
+
+        # set new buy and sell thresholds
+        self.buy_threshold = round(self.price * (1 - self.grid_step), 5)
+        self.sell_threshold = round(self.price * (1 + self.grid_step), 5)
+
+        # log
+        local_time = datetime.datetime.now()       
+        print(f'[{local_time}]: buy_threshold set at {self.buy_threshold} | sell_threshold set at {self.sell_threshold}')
+
     def getMeanPrice(self):
         price = 0
         for i in range(10):
@@ -365,13 +379,15 @@ class GridBot:
                 df.to_sql(self.trade_symbol, self.sql_price_cnx, if_exists='append', index=True)
                 self.sql_price_cnx.execute(f'DELETE FROM {self.trade_symbol} WHERE "index" = {self.timestep_count - 10800};')
                 
-                # decide whether to trigger a stoploss, place a sell/buy order, or do nothing
+                # decide whether to trigger a stoploss, place a sell/buy order, reset the grid, or do nothing
                 if self.active_trades > 0 and self.price > self.sell_threshold:
                     self.placeSellOrder()
                 elif self.active_trades > 0 and self.price < self.stoploss_price:
                     self.executeStoploss()
                 elif self.active_trades < self.max_open_trades and self.price < self.buy_threshold:
                     self.placeBuyOrder()
+                elif self.active_trades == 0 and self.price > self.sell_threshold:
+                    self.reset_grid()
 
             except KeyboardInterrupt:
                 local_time = datetime.datetime.now()
@@ -379,6 +395,7 @@ class GridBot:
                 exit()
 
 def parseArgs():
+
     # ./binance_grid_bot.py --api_key api_key_testnet --api_secret api_secret_testnet
     parser = ap.ArgumentParser(description='Binance Grid Bot')
     requiredNamed = parser.add_argument_group('required named arguments')
@@ -394,6 +411,7 @@ def parseArgs():
     return(api_key, api_secret)
 
 def readKeys(api_key, api_secret):
+
     with open(api_key) as api_key_fh:
         key = ''
         for line in api_key_fh:
@@ -405,6 +423,7 @@ def readKeys(api_key, api_secret):
     return(key, secret)
 
 def main():
+
     api_key, api_secret = parseArgs()
     key, secret = readKeys(api_key, api_secret)
     #trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
