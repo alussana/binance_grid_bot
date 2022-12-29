@@ -248,6 +248,9 @@ class GridBot:
         # determine the amount to sell from the oldest active trade
         amount = self.trades_amount.pop(0)
 
+        # remove the oldest position from trades_price
+        self.trades_price.pop(0)
+
         # perform the sell order
         order = self.client.create_order(
             symbol=self.trade_symbol,
