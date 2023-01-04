@@ -61,7 +61,7 @@ class GridBot:
         
         # grid parameters
         self.grid_step = 0.007
-        self.max_open_trades = 4
+        self.max_open_trades = 5
         self.sell_threshold = None
         self.buy_threshold = None
         self.trades_amount = [] # LIFO queue of active trades amounts
@@ -318,18 +318,6 @@ class GridBot:
         else:
             print(f'[{local_time}]: starting bot.')
         
-        # get starting stake balance
-        if self.test_mode:
-            #
-            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
-        else:
-            self.stake_balance = self.getFreeAssetBalance(self.stake_currency)
-
-        # log
-        local_time = datetime.datetime.now()
-        print('---')
-        print(f'[{local_time}]: starting stake balance is {self.stake_balance} {self.stake_currency}')
-        
         # SQL engine for price
         self.sql_price_cnx = sqlite3.connect(f'{self.trade_symbol}_price.db')
 
@@ -345,7 +333,16 @@ class GridBot:
         local_time = datetime.datetime.now()
         print('---')
         print(f'[{local_time}]: connected to SQLite wallet database {self.trade_symbol}_wallet.db')
-        
+
+        # get starting balance
+        self.checkAndTrackWallet()
+
+        # log
+        local_time = datetime.datetime.now()
+        print('---')
+        print(f'[{local_time}]: starting stake balance is {self.stake_balance} {self.stake_currency}')
+        print(f'[{local_time}]: starting trade balance is {self.trade_balance} {self.trade_coin}')
+
         # set the starting price
         mean_price = self.getMeanPrice()
 
@@ -399,7 +396,7 @@ class GridBot:
 
 def parseArgs():
 
-    # ./binance_grid_bot.py --api_key api_key_testnet --api_secret api_secret_testnet
+    # ./binance_grid_bot.py --api_key testnet_api_key --api_secret testnet_secret_key
     parser = ap.ArgumentParser(description='Binance Grid Bot')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument(
@@ -429,9 +426,9 @@ def main():
 
     api_key, api_secret = parseArgs()
     key, secret = readKeys(api_key, api_secret)
-    #trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
+    trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
     #trade_pair = {'XMRBUSD': ['XMR', 'BUSD']}
-    trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
+    #trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
     #trade_pair = {'BUSDUSDT': ['BUSD', 'USDT']}
     bot = GridBot(key, secret, trade_pair, test=True)
     bot.start()
