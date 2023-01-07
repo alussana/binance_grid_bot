@@ -1,7 +1,31 @@
 # binance_grid_bot
 
-## TODO
+## setup virtual environment
 
+```
+python3 -m venv env
+source env/bin/activate
+pip install python-binance
+pip install pandas
+```
+
+## example usage
+
+### start the bot [tmp]
+
+```
+./binance_grid_bot.py --api_key testnet_api_key --api_secret testnet_secret_key
+```
+
+### deploy Dash interface [tmp]
+
+```
+./binance_grid_bot_dashboard.py --symbol XRPBUSD
+```
+
+## to do
+
+* make testnet mode triggerable from command arguments
 * add generic exceptions handling
 * automatically handle currency names in dash monitoring interface from arguments
 * refine dash monitoring interface plot

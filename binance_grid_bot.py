@@ -135,7 +135,8 @@ class GridBot:
             df = pd.DataFrame({
                 'local_time': local_time, 
                 self.stake_currency: self.stake_balance,
-                self.trade_coin: self.trade_balance
+                self.trade_coin: self.trade_balance,
+                f'{self.trade_symbol}_price': self.price
                 },
                 index=[self.timestep_count])
             df.to_sql(self.trade_symbol, self.sql_wallet_cnx, if_exists='append', index=True)
@@ -426,9 +427,9 @@ def main():
 
     api_key, api_secret = parseArgs()
     key, secret = readKeys(api_key, api_secret)
-    trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
+    #trade_pair = {'BTCUSDT': ['BTC', 'USDT']}
     #trade_pair = {'XMRBUSD': ['XMR', 'BUSD']}
-    #trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
+    trade_pair = {'XRPBUSD': ['XRP', 'BUSD']}
     #trade_pair = {'BUSDUSDT': ['BUSD', 'USDT']}
     bot = GridBot(key, secret, trade_pair, test=True)
     bot.start()
