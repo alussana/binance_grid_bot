@@ -7,6 +7,7 @@ python3 -m venv env
 source env/bin/activate
 pip install python-binance
 pip install pandas
+pip install dash
 ```
 
 ## example usage
