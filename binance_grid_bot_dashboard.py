@@ -6,6 +6,7 @@
 
 from dash import Dash, html, dcc
 import plotly.express as px
+import plotly.io as pio
 import pandas as pd
 import sqlite3
 import argparse as ap
@@ -37,23 +38,47 @@ if __name__ == '__main__':
 
     df_price = pd.read_sql_query("SELECT * from XRPBUSD", con=cnx_price)
     df_wallet = pd.read_sql_query("SELECT * from XRPBUSD", con=cnx_wallet)
+
+    template = 'plotly_dark'
+
+    # Create figure
+    price_fig = make_subplots()
+
+    # Add traces
+    price_fig.add_trace(
+       go.Scatter(x=df_price['local_time'], y=df_price['price'], name="price")
+    )
+
+    # Add figure title
+    price_fig.update_layout(
+        title_text="Price",
+        template=template
+    )
+
+    # Set x-axis title
+    price_fig.update_xaxes(title_text="local_time")
+
+    # Set y-axis titles
+    price_fig.update_yaxes(title_text="<b>XRPBSUD</b> price")
     
     app = Dash(__name__)
 
     app.layout = html.Div([
-        html.H4('Interactive data-scaling using the secondary axis'),
-        html.P("Select red line's Y-axis:"),
+        html.H1('Binance Grid Bot'),
+        html.H2('Full transactions history'),
         dcc.RadioItems(
             id='radio',
-            options=['Primary', 'Secondary'],
-            value='Secondary'
+            options=['One axis', 'Two axis'],
+            value='One axis'
         ),
-        dcc.Graph(id="graph"),
+        dcc.Graph(id="wallet_graph"),
+        html.H2('Price history - last 10800 bot cycles'),
+        dcc.Graph(id="price_graph",
+                  figure=price_fig)
     ])
 
-
     @app.callback(
-        Output("graph", "figure"), 
+        Output("wallet_graph", "figure"), 
         Input("radio", "value"))
     def display_(radio_value):
 
@@ -63,31 +88,35 @@ if __name__ == '__main__':
         # Add traces
         fig.add_trace(
             go.Scatter(x=df_wallet['local_time'], y=df_wallet['BUSD'], name="BUSD"),
-            secondary_y=False,
+            secondary_y=False
         )
 
         fig.add_trace(
             go.Scatter(x=df_wallet['local_time'], y=df_wallet['XRP'], name="XRP"),
-            secondary_y=True,
+            secondary_y = radio_value == 'Two axis'
         )
 
         # Add figure title
         fig.update_layout(
-            title_text="Wallet"
+            title_text="Wallet",
+            template=template
         )
 
         # Set x-axis title
-        fig.update_xaxes(title_text="local time (Rome)")
+        fig.update_xaxes(title_text="local_time")
 
         # Set y-axes titles
-        fig.update_yaxes(title_text="<b>BUSD</b> in wallet", secondary_y=False)
-        fig.update_yaxes(title_text="<b>XRP</b> in wallet", secondary_y=True)
+        if radio_value == 'Two axis':
+            fig.update_yaxes(title_text="<b>BUSD</b> in wallet", secondary_y=False)
+            fig.update_yaxes(title_text="<b>XRP</b> in wallet", secondary_y=True)
+        else:
+            fig.update_yaxes(title_text="amount in wallet", secondary_y=False)
 
         return fig
-
 
     app.run_server(
         debug=True,
         port=9050,
-        host='0.0.0.0'
+        host='0.0.0.0',
+        use_reloader=True
     )
