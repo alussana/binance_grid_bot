@@ -38,24 +38,32 @@ if __name__ == '__main__':
 
     template = 'plotly_dark'
 
-    # calculate unrealized profit at each timepoint
+    # calculate unrealized profit and price change at each timepoint
     start_stake_amount = float(df_wallet.loc[df_wallet['index']==-1, 'BUSD'])
     start_trade_amount = float(df_wallet.loc[df_wallet['index']==-1, 'XRP'])
+    start_price = float(df_wallet.iloc[1,:]['XRPBUSD_price'])
     unrealized_profit = [0]
     unrealized_profit_percent = [0]
+    price_change = [0]
+    price_change_percent = [0]
     for timepoint in df_wallet['local_time'][1:]:
         stake_amount = float(df_wallet.loc[df_wallet['local_time']==timepoint]['BUSD'])
         trade_amount = float(df_wallet.loc[df_wallet['local_time']==timepoint]['XRP'])
         price = float(df_wallet.loc[df_wallet['local_time']==timepoint]['XRPBUSD_price'])
+        price_delta = price - start_price
         stake_delta = stake_amount - start_stake_amount
         trade_delta = trade_amount - start_trade_amount
         delta_profit = stake_delta + trade_delta * price
         unrealized_profit.append(delta_profit)
         unrealized_profit_percent.append(delta_profit / start_stake_amount * 100)
+        price_change.append(price_delta)
+        price_change_percent.append(price_delta / start_price * 100)
     df_profit = pd.DataFrame({
         'local_time':df_wallet['local_time'],
         'unrealized_profit': unrealized_profit,
-        'unrealized_profit_percent': unrealized_profit_percent
+        'unrealized_profit_percent': unrealized_profit_percent,
+        'price_change': price_change,
+        'price_change_percent': price_change_percent
         })
     
     app = Dash(__name__)
@@ -123,17 +131,25 @@ if __name__ == '__main__':
         fig = make_subplots()
 
         if radio_value == 'Absolute':
-            column='unrealized_profit'
+            bot_column='unrealized_profit'
+            market_column='price_change'
             title='Unrealized profit'
             y_label='unrealized profit in BUSD'
         elif radio_value == 'Percentage':
-            column='unrealized_profit_percent'
+            bot_column='unrealized_profit_percent'
             title='Unrealized profit (%)'
-            y_label='unrealized profit (%) in BUSD'
+            y_label='unrealized profit in BUSD (%)'
+            market_column='price_change_percent'
 
         fig.add_trace(
-            go.Scatter(x=df_profit['local_time'], y=df_profit[column], name="Profit")
+            go.Scatter(x=df_profit['local_time'], y=df_profit[bot_column], name="Bot")
         )
+
+        if radio_value == 'Percentage':
+            fig.add_trace(
+                go.Scatter(x=df_profit['local_time'], y=df_profit[market_column], name="Market")
+            )
+
         fig.update_layout(
             title_text=title,
             template=template
