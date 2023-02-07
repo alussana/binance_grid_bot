@@ -27,8 +27,6 @@ pip install dash
 ## to do
 
 * make testnet mode triggerable from command arguments
-* add generic exceptions handling
-* remove price db entirely together with the iteration counter
 * automatically handle currency names in dash monitoring interface from arguments
 * factor in the fees to compute the buy and sell thresholds when not in test mode
 * use additional database table to store the bot parameters, enabling to resume a run

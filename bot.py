@@ -21,9 +21,6 @@ class GridBot:
         # test mode
         self.test_mode = test
 
-        # database of price history
-        self.timestep_count = -1
-
         # user API authentication details
         self.key = key
         self.secret = secret
@@ -60,7 +57,7 @@ class GridBot:
         # TODO get trading fees
         
         # grid parameters
-        self.grid_step = 0.007
+        self.grid_step = 0.01
         self.max_open_trades = 5
         self.sell_threshold = None
         self.buy_threshold = None
@@ -138,7 +135,8 @@ class GridBot:
                 self.trade_coin: self.trade_balance,
                 f'{self.trade_symbol}_price': self.price
                 },
-                index=[self.timestep_count])
+                index=[local_time]
+                )
             df.to_sql(self.trade_symbol, self.sql_wallet_cnx, if_exists='append', index=True)
 
     def placeBuyOrder(self):
@@ -319,21 +317,13 @@ class GridBot:
         else:
             print(f'[{local_time}]: starting bot.')
         
-        # SQL engine for price
-        self.sql_price_cnx = sqlite3.connect(f'{self.trade_symbol}_price.db')
-
-        # log
-        local_time = datetime.datetime.now()
-        print('---')
-        print(f'[{local_time}]: connected to SQLite price database {self.trade_symbol}_price.db')
-
         # SQLite db for wallet and parameters
         self.sql_wallet_cnx = sqlite3.connect(f'{self.trade_symbol}_wallet.db')
 
         # log
         local_time = datetime.datetime.now()
         print('---')
-        print(f'[{local_time}]: connected to SQLite wallet database {self.trade_symbol}_wallet.db')
+        print(f'[{local_time}]: connected to SQLite database {self.trade_symbol}_wallet.db')
 
         # get starting balance
         self.checkAndTrackWallet()
@@ -362,24 +352,17 @@ class GridBot:
         while True:
             try:
                 # loop every couple of seconds
-                time.sleep(2)
+                time.sleep(1.5)
 
                 # track the time
                 local_time = datetime.datetime.now()
-                self.timestep_count += 1
 
                 # get the current price
                 try:
                     self.price = self.getPrice()
-                    df = pd.DataFrame({'local_time': local_time, 'price': self.price}, index=[self.timestep_count])
                 except:
-                    df = pd.DataFrame({'local_time': local_time, 'price': 'NA'}, index=[self.timestep_count])
                     print(f'[{local_time}]: cannot get current price; possible network issue.')
 
-                # write to database
-                df.to_sql(self.trade_symbol, self.sql_price_cnx, if_exists='append', index=True)
-                self.sql_price_cnx.execute(f'DELETE FROM {self.trade_symbol} WHERE "index" = {self.timestep_count - 10800};')
-                
                 # decide whether to trigger a stoploss, place a sell/buy order, reset the grid, or do nothing
                 if self.active_trades > 0 and self.price > self.sell_threshold:
                     self.placeSellOrder()
@@ -395,9 +378,16 @@ class GridBot:
                 print(f'[{local_time}]: bot terminated')
                 exit()
 
+            except Exception as e:
+                local_time = datetime.datetime.now()
+                print(f'[{local_time}]: an exception occurred; the bot tried to keep running and the error message is displayed below:')
+                print(e)
+                continue
+                
+
 def parseArgs():
 
-    # ./binance_grid_bot.py --api_key testnet_api_key --api_secret testnet_secret_key
+    # ./bot.py --api_key testnet_api_key --api_secret testnet_secret_key
     parser = ap.ArgumentParser(description='Binance Grid Bot')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument(

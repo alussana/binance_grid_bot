@@ -15,7 +15,7 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 def parseArgs():
-    # ./binance_grid_bot_dashboard.py --symbol XRPBUSD
+    # ./bot_dashboard.py --symbol XRPBUSD
     parser = ap.ArgumentParser(description='Binance Grid Bot Dashboard')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument(
@@ -39,8 +39,11 @@ if __name__ == '__main__':
     template = 'plotly_dark'
 
     # calculate unrealized profit and price change at each timepoint
-    start_stake_amount = float(df_wallet.loc[df_wallet['index']==-1, 'BUSD'])
-    start_trade_amount = float(df_wallet.loc[df_wallet['index']==-1, 'XRP'])
+    first_record = df_wallet.iloc[0, :]
+    #start_stake_amount = float(df_wallet.loc[df_wallet['index']==-1, 'BUSD'])
+    start_stake_amount = float(first_record['BUSD'])
+    #start_trade_amount = float(df_wallet.loc[df_wallet['index']==-1, 'XRP'])
+    start_trade_amount= float(first_record['XRP'])
     start_price = float(df_wallet.iloc[1,:]['XRPBUSD_price'])
     unrealized_profit = [0]
     unrealized_profit_percent = [0]
